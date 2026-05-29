@@ -177,7 +177,7 @@ JSON만 출력 (마크다운 없이):
         upd(job_id, status="자막 입히는 중", progress=90)
         output = str(tmp / "result.mp4")
         run(["ffmpeg", "-i", merged,
-             "-vf", f"subtitles={srt_path}:force_style='FontSize=20,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=2,Alignment=2'",
+             "-vf", f"subtitles={srt_path}:force_style='FontName=NanumGothic,FontSize=20,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=2,Alignment=2'",
              "-c:v", "libx264", "-c:a", "copy",
              output, "-y"])
 
