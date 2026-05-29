@@ -8,8 +8,10 @@ from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 import google.generativeai as genai
 from faster_whisper import WhisperModel
+import httpx
 
 # ── Init ────────────────────────────────────────────────────────────────────
 genai.configure(api_key=os.environ.get("GOOGLE_AI_API_KEY", ""))
@@ -55,11 +57,20 @@ def run(cmd: list, **kwargs):
 
 # ── Main processing pipeline ─────────────────────────────────────────────────
 
-def process_job(job_id: str, input_path: str):
+def process_job(job_id: str, input_path: str, download_url: str | None = None):
     tmp = Path(f"/tmp/{job_id}")
     tmp.mkdir(exist_ok=True)
 
     try:
+        # 0. Download from URL if needed
+        if download_url:
+            upd(job_id, status="영상 다운로드 중", progress=3)
+            with httpx.stream("GET", download_url, timeout=600, follow_redirects=True) as r:
+                r.raise_for_status()
+                with open(input_path, "wb") as f:
+                    for chunk in r.iter_bytes(chunk_size=1024 * 1024):
+                        f.write(chunk)
+
         # 1. Extract audio
         upd(job_id, status="음성 추출 중", progress=10)
         audio_path = str(tmp / "audio.wav")
@@ -189,6 +200,11 @@ JSON만 출력 (마크다운 없이):
 
 # ── Routes ───────────────────────────────────────────────────────────────────
 
+class UrlRequest(BaseModel):
+    url: str
+    filename: str = "video.mp4"
+    job_id: str | None = None
+
 @app.get("/")
 def root():
     return {"status": "autocut api running"}
@@ -205,6 +221,20 @@ async def process(file: UploadFile = File(...)):
     jobs[job_id] = {"status": "처리 시작", "progress": 5, "result_path": None, "error": None}
 
     t = threading.Thread(target=process_job, args=(job_id, input_path))
+    t.daemon = True
+    t.start()
+
+    return {"job_id": job_id}
+
+@app.post("/process-url")
+async def process_from_url(body: UrlRequest):
+    job_id = body.job_id or str(uuid.uuid4())
+    ext = Path(body.filename).suffix or ".mp4"
+    input_path = f"/tmp/{job_id}_input{ext}"
+
+    jobs[job_id] = {"status": "다운로드 대기", "progress": 2, "result_path": None, "error": None}
+
+    t = threading.Thread(target=process_job, args=(job_id, input_path, body.url))
     t.daemon = True
     t.start()
 
