@@ -14,9 +14,15 @@ from faster_whisper import WhisperModel
 # ── Init ────────────────────────────────────────────────────────────────────
 genai.configure(api_key=os.environ.get("GOOGLE_AI_API_KEY", ""))
 
-print("Loading Whisper model...")
-whisper = WhisperModel("base", device="cpu", compute_type="int8")
-print("Whisper ready.")
+_whisper = None
+
+def get_whisper():
+    global _whisper
+    if _whisper is None:
+        print("Loading Whisper model...")
+        _whisper = WhisperModel("base", device="cpu", compute_type="int8")
+        print("Whisper ready.")
+    return _whisper
 
 app = FastAPI()
 app.add_middleware(
@@ -63,7 +69,7 @@ def process_job(job_id: str, input_path: str):
 
         # 2. Whisper STT
         upd(job_id, status="음성 인식 중 (Whisper)", progress=25)
-        segs, _ = whisper.transcribe(audio_path, language="ko")
+        segs, _ = get_whisper().transcribe(audio_path, language="ko")
         transcript = [
             {"start": round(s.start, 2), "end": round(s.end, 2), "text": s.text.strip()}
             for s in segs if s.text.strip()
